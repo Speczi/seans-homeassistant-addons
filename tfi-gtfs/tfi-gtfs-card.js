@@ -1,16 +1,15 @@
-
 import {LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@2/core/lit-core.min.js';
 
 const DEFAULT_STOP_NUMBER = "";
 const DEFAULT_API_URL = "";
 const DEFAULT_REFRESH_INTERVAL = 30;
-const DEFAULT_MAX_ARRIVALS = 10;
-const DEFAULT_ICON = "mdi:bus";
+const DEFAULT_MAX_ARRIVALS = 6;
+const DEFAULT_ICON = "mdi:train";
 
 class TfiGtfsCardEditor extends LitElement {
     static properties = {
         hass: {},
-        _config: {},
+        _config: {}, 
     };
 
     setConfig(config) {
@@ -27,6 +26,7 @@ class TfiGtfsCardEditor extends LitElement {
         this.dispatchEvent(event);
         return event;
     }
+
     render() {
         if (!this.hass || !this._config) {
           return html``;
@@ -52,6 +52,7 @@ class TfiGtfsCardEditor extends LitElement {
                 {name: "stopNumber", label: "Stop Number", selector: { text: {} }, required: false},
                 {name: "overwriteStopName", label: "Overwrite stop name in the UI", selector: { text: {} }, required: false},
                 {name: "filterRoutes", label: "Filter by route names (comma separated)", selector: { text: {type: 'string'} }, required: false },
+                {name: "filterHeadsigns", label: "Filter by headsign (comma separated)", selector: { text: {type: 'string'} }, required: false },
                 {name: "refreshInterval", label: "Refresh Interval (seconds)", selector: { text: {type: 'number'} } },
                 {name: "maxArrivals", label: "Maximum number of arrivals to show", selector: { text: {type: 'number'} } },
                 {name: "hideServiceProvider", label: "Hide service provider", selector: { boolean: {type: 'boolean'} }, required: false },
@@ -69,7 +70,6 @@ customElements.define("tfi-gtfs-card-editor", TfiGtfsCardEditor);
 
 
 class TfiGtfsCard extends LitElement {
-
     static get properties() {
         return {
             hass: {},
@@ -89,6 +89,7 @@ class TfiGtfsCard extends LitElement {
             this.refresh();
         }
     }
+
     disconnectedCallback() {
         super.disconnectedCallback();
         if(self.interval) {
@@ -109,28 +110,63 @@ class TfiGtfsCard extends LitElement {
             console.warn(`Error fetching ${url}: ${response.status} ${response.statusText}`)
         }
     }
+
     getArrivals() {
-        if(this.config.stopEntity) {
-            if(this.config.filterRoutes) {
-                return this.filterArrivals(this.hass.states[this.config.stopEntity].attributes.arrivals, this.config.filterRoutes);
-            }
-            return this.hass.states[this.config.stopEntity].attributes.arrivals;
+        const arrivals = this.getArrivalsData();
+        
+        if (arrivals) {
+            return this.filterArrivals(
+                arrivals, 
+                this.config.filterRoutes,
+                this.config.filterHeadsigns
+            );
         }
-        else if(this.data) {
-            if(this.config.filterRoutes) {
-                return this.filterArrivals(this.data[this.config.stopNumber].arrivals, this.config.filterRoutes);
-            }
-            return this.data[this.config.stopNumber].arrivals;
-        }
-        else {
-            return [];
-        }
+        
+        return [];
     }
-    filterArrivals(arrivals, routeNumbers) {
-        // Convert the comma-separated routeNumbers string into an array
-        const routeNumberArray = routeNumbers.split(',').map(route => route.trim());
-        // Filter the arrivals array based on the routeNumberArray
-        return arrivals.filter(arrival => routeNumberArray.includes(arrival.route));
+
+    getArrivalsData() {
+        if (this.config.stopEntity) {
+            return this.hass.states[this.config.stopEntity]?.attributes?.arrivals;
+        }
+        
+        if (this.data && this.config.stopNumber) {
+            return this.data[this.config.stopNumber]?.arrivals;
+        }
+        
+        return null;
+    }
+
+    filterArrivals(arrivals, routeNumbers, headsigns) {
+        if (!arrivals) return [];
+
+        let filteredArrivals = [...arrivals];
+
+        if (routeNumbers) {
+            const routeNumberArray = routeNumbers.split(',')
+                .map(route => route.trim())
+                .filter(route => route);
+            
+            if (routeNumberArray.length > 0) {
+                filteredArrivals = filteredArrivals.filter(arrival => 
+                    routeNumberArray.includes(arrival.route)
+                );
+            }
+        }
+
+        if (headsigns) {
+            const headsignArray = headsigns.split(',')
+                .map(headsign => headsign.trim())
+                .filter(headsign => headsign);
+            
+            if (headsignArray.length > 0) {
+                filteredArrivals = filteredArrivals.filter(arrival => 
+                    headsignArray.includes(arrival.headsign)
+                );
+            }
+        }
+        
+        return filteredArrivals;
     }
 
     getStopName() { 
@@ -161,7 +197,7 @@ class TfiGtfsCard extends LitElement {
                     let due = arrival.real_time_arrival ?? arrival.scheduled_arrival;
                     // parse due
                     const dueDate = new Date(due);
-                    // if due is in the next 20 minutes, show minutes remaining
+                    // if due is in the next 30 minutes, show minutes remaining
                     const now = new Date();
                     const minutesRemaining = Math.round((dueDate - now) / 1000 / 60);
                     if( minutesRemaining < -1 ) {
@@ -170,7 +206,7 @@ class TfiGtfsCard extends LitElement {
                     else if (minutesRemaining < 1) {
                         due = "Due";
                     }
-                    else if (minutesRemaining < 20) {
+                    else if (minutesRemaining < 30) {
                         due = `${minutesRemaining} minutes`;
                     } 
                     else {
@@ -224,6 +260,10 @@ class TfiGtfsCard extends LitElement {
         border-collapse: collapse;
         width: 100%;
       }
+      h2 {
+        margin-top:-5px;
+        margin-bottom:5px;
+      }
       table tr:nth-child(even) {
         background-color: rgba(130, 130, 130, 0.1);
       }   
@@ -244,6 +284,7 @@ class TfiGtfsCard extends LitElement {
       }
       span.route {
         font-weight: bold;
+        text-transform: capitalize;
 
       }
       span.headsign {
