@@ -4,7 +4,7 @@ FROM $BUILD_FROM
 ARG DATA_DIR=/data
 ENV DATA_DIR=${DATA_DIR}
 
-ARG SOURCE_ZIP_URL=https://github.com/seanblanchfield/tfi-gtfs/archive/refs/heads/main.zip
+ARG SOURCE_ZIP_URL=https://github.com/Speczi/tfi-gtfs/archive/refs/heads/main.zip
 
 # Install requirements for add-on
 RUN \
